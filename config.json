@@ -1,10 +1,10 @@
 {
-  "token": "PUT_YOUR_TELEGRAM_BOT_TOKEN_HERE",
-  "owner_id": "PUT_YOUR_TELEGRAM_USER_ID_HERE",
+  "token": "8700491778:AAHgJ_rZVsr2hK7FlgDkvi1d_w56CUhoUJw",
+  "owner_id": "6892510835",
   "owner_username": "JOY_AHMED_88",
   "owner_name": "Jubaed Ahmed Joy",
   "bot_name": "JOY BOT",
-  "prefix": "/",
+  "prefix": ".",
   "admin_only_mode": false,
   "author": "JOY"
 }
