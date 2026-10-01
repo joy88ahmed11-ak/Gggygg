@@ -8,13 +8,14 @@ const ConsoleLogger = {
         const sender = `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim() || 'Unknown';
         const text = msg.text || '[Media / Non-text message]';
 
-        console.log(gradient.cyan(`\n📥 [NEW MESSAGE] [${chatType}]`));
+        // gradient.cyan এর জায়গায় সঠিক gradient.cristal ব্যবহার করা হয়েছে
+        console.log(gradient.cristal(`\n📥 [NEW MESSAGE] [${chatType}]`));
         console.log(`👤 From: ${sender} (ID: ${msg.from.id})`);
         console.log(`💬 Text: ${text}`);
     },
 
     cmdSuccess: (cmdName, userId, executionTime) => {
-        console.log(gradient.cristal(`✅ [CMD SUCCESS] Command: /${cmdName} | Executed by ID: ${userId} | Time: ${executionTime}ms`));
+        console.log(gradient.pastel(`✅ [CMD SUCCESS] Command: /${cmdName} | Executed by ID: ${userId} | Time: ${executionTime}ms`));
     },
 
     cmdFail: (cmdName, userId, error) => {
@@ -30,7 +31,6 @@ const ConsoleLogger = {
     }
 };
 
-// global object এ অ্যাসাইন করা হলো যাতে main.js থেকে কল করা যায়
 global.ConsoleLogger = ConsoleLogger;
 
 // ================= TERMINAL COMMAND INPUT =================
