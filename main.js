@@ -41,9 +41,32 @@ if (!fs.existsSync(chatGroupsFile)) fs.writeFileSync(chatGroupsFile, JSON.string
 if (!fs.existsSync(userDataFile)) fs.writeFileSync(userDataFile, JSON.stringify({}), 'utf8');
 
 let chatGroups = JSON.parse(fs.readFileSync(chatGroupsFile, 'utf8'));
-let gbanList = [];
 let globalHandleButton = []; 
 global.globalHandleReply = []; 
+
+// ================= GH-GBAN SYSTEM =================
+const GBAN_GITHUB_URL = 'https://raw.githubusercontent.com/JUBAED-AHMED-JOY/Joy/main/gban.json';
+let cachedGbanList = [];
+let lastGbanFetchTime = 0;
+const GBAN_CACHE_DURATION = 60 * 1000; // ১ মিনিট ক্যাশিং
+
+async function fetchGithubGbanList() {
+    const now = Date.now();
+    if (cachedGbanList.length > 0 && (now - lastGbanFetchTime) < GBAN_CACHE_DURATION) {
+        return cachedGbanList;
+    }
+
+    try {
+        const response = await axios.get(GBAN_GITHUB_URL, { timeout: 5000 });
+        if (Array.isArray(response.data)) {
+            cachedGbanList = response.data;
+            lastGbanFetchTime = now;
+        }
+    } catch (err) {
+        console.error('❌ GBAN Github Fetch Error:', err.message);
+    }
+    return cachedGbanList;
+}
 
 // ================= HELPER: GET LATEST CONFIG =================
 function getLatestConfig() {
@@ -206,10 +229,6 @@ async function executeCommand(bot, command, msg, args) {
     const currentConfig = getLatestConfig();
 
     try {
-        if (gbanList.includes(userId.toString())) {
-            return bot.sendMessage(chatId, '❌ You are globally banned from using this bot.');
-        }
-
         const isOwner = userId.toString() === (currentConfig.owner_id || '').toString();
         const isAdmin = isBotAdmin(userId, currentConfig);
         const isGrpAdmin = await isGroupAdmin(bot, chatId, userId);
@@ -272,6 +291,27 @@ bot.on('message', async (msg) => {
     const userId = msg.from ? msg.from.id : null;
 
     if (!userId) return;
+
+    // ⛔ GITHUB GBAN CHECK (মেসেজের শুরুতে)
+    const gbanList = await fetchGithubGbanList();
+    const bannedUser = gbanList.find(user => user.uid && user.uid.toString() === userId.toString());
+
+    if (bannedUser) {
+        const customReason = bannedUser.reason || bannedUser.text || "You are globally banned from using this bot.";
+        const alertText = 
+`🚫 <b>GLOBAL BAN DETECTED!</b>
+━━━━━━━━━━━━━━━━━━
+👤 <b>নাম:</b> ${msg.from.first_name || 'User'}
+🆔 <b>আইডি:</b> <code>${userId}</code>
+━━━━━━━━━━━━━━━━━━
+
+💬 <b>মেসেজ/কারণ:</b> ${customReason}`;
+
+        return bot.sendMessage(chatId, alertText, {
+            parse_mode: 'HTML',
+            reply_to_message_id: msg.message_id
+        });
+    }
 
     const currentConfig = getLatestConfig();
 
