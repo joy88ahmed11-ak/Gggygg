@@ -19,11 +19,11 @@ app.listen(PORT, () => {
     console.log(`🌐 Server active & listening on port: ${PORT}`);
 });
 
-// ================= JOY CORE =================
+// ================= JOY CORE & CONSOLE =================
 require('./JOY/utils.js');
 const TelegramAdapter = require('./JOY/telegram-adapter.js');
 const checkVersion = require('./JOY/update.js');
-require('./JOY/concole.js');
+require('./JOY/concole.js'); // Custom Console Logger
 const { getInvalidCmdMsg } = require('./JOY/joy.js');
 
 // ================= GLOBAL TRACKERS =================
@@ -48,7 +48,7 @@ global.globalHandleReply = [];
 const GBAN_GITHUB_URL = 'https://raw.githubusercontent.com/JUBAED-AHMED-JOY/Joy/main/gban.json';
 let cachedGbanList = [];
 let lastGbanFetchTime = 0;
-const GBAN_CACHE_DURATION = 60 * 1000; // ১ মিনিট ক্যাশিং
+const GBAN_CACHE_DURATION = 60 * 1000; // 1 Minute Cache
 
 async function fetchGithubGbanList() {
     const now = Date.now();
@@ -181,7 +181,7 @@ global.reloadBot = function () {
         });
     }
 
-    // Reload হওয়ার পরও কমান্ড মেনু আপডেট করা হবে
+    // Telegram Popup Commands Menu Update
     updateBotCommands();
 
     return commands.length;
@@ -248,6 +248,7 @@ async function executeCommand(bot, command, msg, args) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const currentConfig = getLatestConfig();
+    const startTime = Date.now();
 
     try {
         const isOwner = userId.toString() === (currentConfig.owner_id || '').toString();
@@ -291,7 +292,12 @@ async function executeCommand(bot, command, msg, args) {
             api,
             config: currentConfig,
             commands,
-            message: { reply: t => bot.sendMessage(chatId, t, { reply_to_message_id: msg.message_id }) },
+            message: { 
+                reply: t => {
+                    if (global.ConsoleLogger) global.ConsoleLogger.botReply(chatId, t);
+                    return bot.sendMessage(chatId, t, { reply_to_message_id: msg.message_id });
+                }
+            },
             event: {
                 threadID: chatId,
                 messageID: msg.message_id,
@@ -300,7 +306,17 @@ async function executeCommand(bot, command, msg, args) {
             },
             globalHandleButton
         });
+
+        // CONSOLE SUCCESS LOG
+        if (global.ConsoleLogger) {
+            global.ConsoleLogger.cmdSuccess(command.config.name, userId, Date.now() - startTime);
+        }
+
     } catch (err) {
+        // CONSOLE FAIL LOG
+        if (global.ConsoleLogger) {
+            global.ConsoleLogger.cmdFail(command.config.name, userId, err.message);
+        }
         console.error('Command Execution Error:', err);
         bot.sendMessage(chatId, `❌ Error: ${err.message}`);
     }
@@ -313,7 +329,12 @@ bot.on('message', async (msg) => {
 
     if (!userId) return;
 
-    // ⛔ GITHUB GBAN CHECK (মেসেজের শুরুতে)
+    // 📥 CONSOLE INCOMING MESSAGE LOG
+    if (global.ConsoleLogger) {
+        global.ConsoleLogger.incomingMsg(msg);
+    }
+
+    // ⛔ GITHUB GBAN CHECK
     const gbanList = await fetchGithubGbanList();
     const bannedUser = gbanList.find(user => user.uid && user.uid.toString() === userId.toString());
 
@@ -322,11 +343,13 @@ bot.on('message', async (msg) => {
         const alertText = 
 `🚫 <b>GLOBAL BAN DETECTED!</b>
 ━━━━━━━━━━━━━━━━━━
-👤 <b>নাম:</b> ${msg.from.first_name || 'User'}
-🆔 <b>আইডি:</b> <code>${userId}</code>
+👤 <b>Name:</b> ${msg.from.first_name || 'User'}
+🆔 <b>ID:</b> <code>${userId}</code>
 ━━━━━━━━━━━━━━━━━━
 
-💬 <b>মেসেজ/কারণ:</b> ${customReason}`;
+💬 <b>Reason:</b> ${customReason}`;
+
+        if (global.ConsoleLogger) global.ConsoleLogger.botReply(chatId, alertText);
 
         return bot.sendMessage(chatId, alertText, {
             parse_mode: 'HTML',
@@ -436,6 +459,8 @@ bot.on('message', async (msg) => {
             } else {
                 // Command Not Found Alert
                 const notFoundMsg = getInvalidCmdMsg(prefix, inputCmdName);
+                if (global.ConsoleLogger) global.ConsoleLogger.botReply(chatId, notFoundMsg);
+
                 return bot.sendMessage(chatId, notFoundMsg, { 
                     reply_to_message_id: msg.message_id,
                     parse_mode: 'HTML'
@@ -464,7 +489,7 @@ bot.on('message', async (msg) => {
     await checkVersion();
     const currentConfig = getLatestConfig();
 
-    // Telegram Popup Menu আপডেট করা
+    // Telegram Commands Menu Auto-Register
     await updateBotCommands();
 
     logger(` 🤖 ${currentConfig.bot_name || 'JOY BOT'} Started Successfully!`);
