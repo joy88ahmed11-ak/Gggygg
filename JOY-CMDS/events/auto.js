@@ -28,21 +28,31 @@ module.exports = {
 
             // Download video
             const { title, filePath } = await downloadVideo(url);
+            const videoTitle = title || 'No Title';
 
-            // Inline button markup
+            // Inline button markup with Copy Title feature
             const options = {
-                caption: `🎬 𝗧𝗶𝘁𝗹𝗲: ${title || 'No Title'}\n\n🌿 ★ 𝗝𝗢𝗬-𝗧𝗚-𝗕𝗢𝗧 ★\n𝗕𝗢𝗧 𝗗𝗘𝗩𝗘𝗟𝗢𝗣𝗘𝗥 𝗝𝗢𝗬 𝗔𝗛𝗠𝗘𝗗`,
+                caption: `🎬 𝗧𝗶𝘁𝗹𝗲: ${videoTitle}\n\n🌿 ★ 𝗝𝗢𝗬-𝗧𝗚-𝗕𝗢𝗧 ★\n𝗕𝗢𝗧 𝗗𝗘𝗩𝗘𝗟𝗢𝗣𝗘𝗥 𝗝𝗢𝗬 𝗔𝗛𝗠𝗘𝗗`,
                 reply_to_message_id: msg.message_id,
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "🤖 BOT OWNER: JOY AHMED", url: "https://t.me/JOY_AHMED_88" }
+                            { 
+                                text: "📋 Copy Title", 
+                                copy_text: { text: videoTitle } 
+                            }
+                        ],
+                        [
+                            { 
+                                text: "🤖 BOT OWNER: JOY AHMED", 
+                                url: "https://t.me/JOY_AHMED_88" 
+                            }
                         ]
                     ]
                 }
             };
 
-            // Send video with caption and button
+            // Send video with caption and buttons
             await bot.sendVideo(chatId, fs.createReadStream(filePath), options);
 
             // Delete temporary message
