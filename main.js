@@ -92,6 +92,24 @@ const commands = [];
 const events = [];
 const cooldowns = new Map();
 
+// ================= TELEGRAM MENU COMMANDS UPDATER =================
+async function updateBotCommands() {
+    try {
+        const botCommands = commands
+            .filter(cmd => cmd.config && cmd.config.name)
+            .map(cmd => ({
+                command: cmd.config.name.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+                description: cmd.config.description || "Joy Bot Command"
+            }));
+
+        if (botCommands.length > 0) {
+            await bot.setMyCommands(botCommands);
+        }
+    } catch (err) {
+        console.error("❌ Error setting bot commands menu:", err.message);
+    }
+}
+
 // ================= HELPER: ESCAPE REGEX PREFIX =================
 function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -162,6 +180,9 @@ global.reloadBot = function () {
             }
         });
     }
+
+    // Reload হওয়ার পরও কমান্ড মেনু আপডেট করা হবে
+    updateBotCommands();
 
     return commands.length;
 };
@@ -442,6 +463,10 @@ bot.on('message', async (msg) => {
 (async () => {
     await checkVersion();
     const currentConfig = getLatestConfig();
+
+    // Telegram Popup Menu আপডেট করা
+    await updateBotCommands();
+
     logger(` 🤖 ${currentConfig.bot_name || 'JOY BOT'} Started Successfully!`);
     logger(` 📌 Commands loaded: ${commands.length}`);
     logger(` 📌 Events loaded: ${events.length}`);
