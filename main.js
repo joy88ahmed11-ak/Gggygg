@@ -499,6 +499,11 @@ bot.on('message', async (msg) => {
     logger(` ⚙️ Prefix: ${currentConfig.prefix}`);
 })();
 
-process.on('unhandledRejection', (err) => {
-    console.error(' Unhandled Rejection:', err);
+// ================= ERROR CATCHERS =================
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
 });
