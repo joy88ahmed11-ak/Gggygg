@@ -4,15 +4,18 @@ const fs = require("fs-extra");
 const path = require("path");
 const { downloadVideo } = require("joy-video-downloader");
 
+// Temp search cache for button callbacks
+const songSearchResults = new Map();
+
 module.exports = {
   config: {
     author: "JOY AHMED",
     name: "song",
-    aliases: [],
+    aliases: ["sing", "music"],
     usePrefix: true,
     role: 0,
     cooldown: 5,
-    description: "Download MP3 using joy-video-downloader"
+    description: "Search and download songs with inline selection buttons"
   },
 
   onStart: async function ({ bot, chatId, msg, args }) {
@@ -24,64 +27,145 @@ module.exports = {
       });
     }
 
-    let query = args.join(" ");
-    let ytLink = query;
+    const query = args.join(" ");
 
     try {
-      // 🔍 YouTube search
-      if (!ytLink.includes("youtu")) {
-        const search = await yts(query);
-        if (!search.videos.length) {
-          return bot.sendMessage(chatId, "❌ গানটি খুঁজে পাওয়া যায়নি।", {
-            reply_to_message_id: messageId
-          });
-        }
-        ytLink = search.videos[0].url;
+      // 🔍 Direct Youtube Link Check
+      if (query.includes("youtu.be") || query.includes("youtube.com")) {
+        return handleDirectDownload(bot, chatId, query, messageId);
       }
 
-      // ⏳ loading message
-      const loadingMsg = await bot.sendMessage(chatId, "⏳ গানটি প্রসেসিং হচ্ছে...", {
-        reply_to_message_id: messageId
-      });
+      // 🔍 Search top 5 videos
+      const search = await yts(query);
+      const videos = search.videos.slice(0, 5);
 
-      // 📁 cache folder
-      const cacheDir = path.resolve(__dirname, "cache");
-      if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-
-      const filePath = path.join(cacheDir, `song_${Date.now()}.mp3`);
-
-      // 🎵 download
-      const data = await downloadVideo(ytLink, filePath);
-
-      if (!data || !data.filePath) {
-        await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-        return bot.sendMessage(chatId, "❌ গানটি ডাউনলোড করা সম্ভব হয়নি!", {
+      if (!videos.length) {
+        return bot.sendMessage(chatId, "❌ গানটি খুঁজে পাওয়া যায়নি।", {
           reply_to_message_id: messageId
         });
       }
 
-      const title = data.title || "Unknown Title";
+      // 📜 Build numbered list text
+      let listText = `🎵 <b>YOUTUBE MUSIC SEARCH</b>\n\n`;
+      videos.forEach((vid, index) => {
+        listText += `<b>${index + 1}.</b> ${vid.title}\n⏱️ <i>Duration:</i> ${vid.timestamp} | 👤 <i>Channel:</i> ${vid.author.name}\n\n`;
+      });
+      listText += `👇 <i>নিচের বাটন চেপে আপনার পছন্দের গানটি ডাউনলোড করুন:</i>`;
 
-      // 🧹 remove loading msg
-      await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+      // 🔘 Inline Keyboard Buttons (1 to 5)
+      const inlineKeyboard = [
+        videos.map((vid, idx) => ({
+          text: `🎵 ${idx + 1}`,
+          callback_data: `song_select_${chatId}_${idx}`
+        }))
+      ];
 
-      // 🎧 send audio
-      await bot.sendAudio(chatId, fs.createReadStream(data.filePath), {
-        caption: `🎵 𝗧𝗶𝘁𝗹𝗲: ${title}\n✅ 𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗖𝗼𝗺𝗽𝗹𝗲𝘁𝗲!`,
-        reply_to_message_id: messageId
+      // Send image with list and buttons
+      const sentMsg = await bot.sendPhoto(chatId, videos[0].thumbnail, {
+        caption: listText,
+        parse_mode: 'HTML',
+        reply_to_message_id: messageId,
+        reply_markup: {
+          inline_keyboard: inlineKeyboard
+        }
       });
 
-      // 🗑️ delete file safely after send
-      if (fs.existsSync(data.filePath)) {
-        fs.unlinkSync(data.filePath);
-      }
+      // Save search data temporarily
+      songSearchResults.set(`song_cache_${chatId}`, {
+        videos: videos,
+        messageId: sentMsg.message_id
+      });
+
+      // Auto clear search cache after 5 minutes
+      setTimeout(() => {
+        songSearchResults.delete(`song_cache_${chatId}`);
+      }, 5 * 60 * 1000);
 
     } catch (error) {
-      console.error("SONG ERROR:", error.message);
-
-      return bot.sendMessage(chatId, "❌ ডাউনলোড করার সময় সমস্যা হয়েছে!", {
+      console.error("SONG SEARCH ERROR:", error.message);
+      return bot.sendMessage(chatId, "❌ গান সার্চ করার সময় সমস্যা হয়েছে!", {
         reply_to_message_id: messageId
       });
     }
   }
 };
+
+// ================= CALLBACK BUTTON LISTENER =================
+if (global.bot) {
+  global.bot.on('callback_query', async (query) => {
+    const data = query.data;
+    if (!data.startsWith('song_select_')) return;
+
+    const bot = global.bot;
+    const chatId = query.message.chat.id;
+    const selectedIndex = parseInt(data.split('_').pop(), 10);
+
+    const cacheKey = `song_cache_${chatId}`;
+    const cachedData = songSearchResults.get(cacheKey);
+
+    if (!cachedData || !cachedData.videos[selectedIndex]) {
+      return bot.answerCallbackQuery(query.id, {
+        text: "⚠️ এই সার্চ সেশনটি মেয়াদোত্তীর্ণ হয়ে গেছে! আবার নতুন করে /song লিখুন।",
+        show_alert: true
+      });
+    }
+
+    const selectedSong = cachedData.videos[selectedIndex];
+
+    // Answer callback popup
+    await bot.answerCallbackQuery(query.id, { text: `⏳ "${selectedSong.title}" ডাউনলোড শুরু হচ্ছে...` });
+
+    // Download and send song
+    await downloadAndSendAudio(bot, chatId, selectedSong.url, selectedSong.title, query.message.message_id);
+
+    // Clean up cache
+    songSearchResults.delete(cacheKey);
+  });
+}
+
+// ================= HELPER FUNCTIONS =================
+async function downloadAndSendAudio(bot, chatId, ytUrl, defaultTitle, replyMsgId) {
+  const loadingMsg = await bot.sendMessage(chatId, `⏳ <b>${defaultTitle}</b>\n\nডাউনলোড হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...`, {
+    parse_mode: 'HTML',
+    reply_to_message_id: replyMsgId
+  });
+
+  const cacheDir = path.resolve(__dirname, "cache");
+  if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+
+  const filePath = path.join(cacheDir, `song_${Date.now()}.mp3`);
+
+  try {
+    const data = await downloadVideo(ytUrl, filePath);
+
+    await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+
+    if (!data || !data.filePath || !fs.existsSync(data.filePath)) {
+      return bot.sendMessage(chatId, "❌ গানটি ডাউনলোড করা সম্ভব হয়নি!", {
+        reply_to_message_id: replyMsgId
+      });
+    }
+
+    const title = data.title || defaultTitle;
+
+    await bot.sendAudio(chatId, fs.createReadStream(data.filePath), {
+      caption: `🎵 <b>${title}</b>\n\n✅ <b>Download Complete!</b>`,
+      parse_mode: 'HTML',
+      reply_to_message_id: replyMsgId
+    });
+
+    if (fs.existsSync(data.filePath)) {
+      fs.unlinkSync(data.filePath);
+    }
+  } catch (err) {
+    console.error("DOWNLOAD ERROR:", err.message);
+    await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+    return bot.sendMessage(chatId, "❌ ডাউনলোড করার সময় সমস্যা হয়েছে!", {
+      reply_to_message_id: replyMsgId
+    });
+  }
+}
+
+async function handleDirectDownload(bot, chatId, url, messageId) {
+  return downloadAndSendAudio(bot, chatId, url, "Audio Track", messageId);
+}
