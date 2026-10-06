@@ -45,12 +45,12 @@ module.exports = {
         });
       }
 
-      // 📜 Build numbered list text
+      // 📜 Build numbered list text with all 5 thumbnails info
       let listText = `🎵 <b>YOUTUBE MUSIC SEARCH</b>\n\n`;
       videos.forEach((vid, index) => {
         listText += `<b>${index + 1}.</b> ${vid.title}\n⏱️ <i>Duration:</i> ${vid.timestamp} | 👤 <i>Channel:</i> ${vid.author.name}\n\n`;
       });
-      listText += `👇 <i>নিচের বাটন চেপে আপনার পছন্দের গানটি ডাউনলোড করুন:</i>`;
+      listText += `👇 <i>নিচের বাটন চেপে আপনার পছন্দের গানটি নির্বাচন করুন:</i>`;
 
       // 🔘 Inline Keyboard Buttons (1 to 5)
       const inlineKeyboard = [
@@ -70,7 +70,7 @@ module.exports = {
         }
       });
 
-      // Save search data temporarily
+      // Save search data temporarily with message_id for deletion later
       songSearchResults.set(`song_cache_${chatId}`, {
         videos: videos,
         messageId: sentMsg.message_id
@@ -80,6 +80,12 @@ module.exports = {
       setTimeout(() => {
         songSearchResults.delete(`song_cache_${chatId}`);
       }, 5 * 60 * 1000);
+
+      // Register Bot Instance Globally for Callback Query Listener
+      if (!global.telegramBotInstance) {
+        global.telegramBotInstance = bot;
+        setupCallbackListener(bot);
+      }
 
     } catch (error) {
       console.error("SONG SEARCH ERROR:", error.message);
@@ -91,12 +97,11 @@ module.exports = {
 };
 
 // ================= CALLBACK BUTTON LISTENER =================
-if (global.bot) {
-  global.bot.on('callback_query', async (query) => {
+function setupCallbackListener(bot) {
+  bot.on('callback_query', async (query) => {
     const data = query.data;
     if (!data.startsWith('song_select_')) return;
 
-    const bot = global.bot;
     const chatId = query.message.chat.id;
     const selectedIndex = parseInt(data.split('_').pop(), 10);
 
@@ -112,11 +117,14 @@ if (global.bot) {
 
     const selectedSong = cachedData.videos[selectedIndex];
 
-    // Answer callback popup
-    await bot.answerCallbackQuery(query.id, { text: `⏳ "${selectedSong.title}" ডাউনলোড শুরু হচ্ছে...` });
+    // 🗑️ Delete the search list message immediately
+    await bot.deleteMessage(chatId, query.message.message_id).catch(() => {});
 
-    // Download and send song
-    await downloadAndSendAudio(bot, chatId, selectedSong.url, selectedSong.title, query.message.message_id);
+    // Answer callback popup
+    await bot.answerCallbackQuery(query.id, { text: `⏳ "${selectedSong.title}" প্রসেসিং শুরু হচ্ছে...` });
+
+    // Download and send song with selected picture
+    await downloadAndSendAudio(bot, chatId, selectedSong.url, selectedSong.title, selectedSong.thumbnail);
 
     // Clean up cache
     songSearchResults.delete(cacheKey);
@@ -124,10 +132,9 @@ if (global.bot) {
 }
 
 // ================= HELPER FUNCTIONS =================
-async function downloadAndSendAudio(bot, chatId, ytUrl, defaultTitle, replyMsgId) {
-  const loadingMsg = await bot.sendMessage(chatId, `⏳ <b>${defaultTitle}</b>\n\nডাউনলোড হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...`, {
-    parse_mode: 'HTML',
-    reply_to_message_id: replyMsgId
+async function downloadAndSendAudio(bot, chatId, ytUrl, defaultTitle, coverImage) {
+  const loadingMsg = await bot.sendMessage(chatId, `⏳ <b>${defaultTitle}</b>\n\nগানটি ডাউনলোড হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...`, {
+    parse_mode: 'HTML'
   });
 
   const cacheDir = path.resolve(__dirname, "cache");
@@ -141,17 +148,16 @@ async function downloadAndSendAudio(bot, chatId, ytUrl, defaultTitle, replyMsgId
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
 
     if (!data || !data.filePath || !fs.existsSync(data.filePath)) {
-      return bot.sendMessage(chatId, "❌ গানটি ডাউনলোড করা সম্ভব হয়নি!", {
-        reply_to_message_id: replyMsgId
-      });
+      return bot.sendMessage(chatId, "❌ গানটি ডাউনলোড করা সম্ভব হয়নি!");
     }
 
     const title = data.title || defaultTitle;
 
+    // Send Audio File
     await bot.sendAudio(chatId, fs.createReadStream(data.filePath), {
       caption: `🎵 <b>${title}</b>\n\n✅ <b>Download Complete!</b>`,
       parse_mode: 'HTML',
-      reply_to_message_id: replyMsgId
+      thumb: coverImage
     });
 
     if (fs.existsSync(data.filePath)) {
@@ -160,12 +166,10 @@ async function downloadAndSendAudio(bot, chatId, ytUrl, defaultTitle, replyMsgId
   } catch (err) {
     console.error("DOWNLOAD ERROR:", err.message);
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-    return bot.sendMessage(chatId, "❌ ডাউনলোড করার সময় সমস্যা হয়েছে!", {
-      reply_to_message_id: replyMsgId
-    });
+    return bot.sendMessage(chatId, "❌ ডাউনলোড করার সময় সমস্যা হয়েছে!");
   }
 }
 
 async function handleDirectDownload(bot, chatId, url, messageId) {
-  return downloadAndSendAudio(bot, chatId, url, "Audio Track", messageId);
+  return downloadAndSendAudio(bot, chatId, url, "Audio Track", null);
 }
